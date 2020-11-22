@@ -35,7 +35,7 @@ static void report_util_line_feed() { printPgmString(PSTR("\r\n")); }
 static void report_util_feedback_line_feed() { serial_write(']'); report_util_line_feed(); }
 static void report_util_gcode_modes_G() { printPgmString(PSTR(" G")); }
 static void report_util_gcode_modes_M() { printPgmString(PSTR(" M")); }
-// static void report_util_comment_line_feed() { serial_write(')'); report_util_line_feed(); }
+static void report_util_comment_line_feed() { serial_write(')'); report_util_line_feed(); }
 static void report_util_axis_values(float *axis_value) {
   uint8_t idx;
   for (idx=0; idx<N_AXIS; idx++) {
@@ -44,13 +44,12 @@ static void report_util_axis_values(float *axis_value) {
   }
 }
 
-/*
 static void report_util_setting_string(uint8_t n) {
   serial_write(' ');
   serial_write('(');
   switch(n) {
     case 0: printPgmString(PSTR("stp pulse")); break;
-    case 1: printPgmString(PSTR("idl delay")); break; 
+    case 1: printPgmString(PSTR("idl delay")); break;
     case 2: printPgmString(PSTR("stp inv")); break;
     case 3: printPgmString(PSTR("dir inv")); break;
     case 4: printPgmString(PSTR("stp en inv")); break;
@@ -89,17 +88,18 @@ static void report_util_setting_string(uint8_t n) {
   }
   report_util_comment_line_feed();
 }
-*/
 
-static void report_util_uint8_setting(uint8_t n, int val) { 
-  report_util_setting_prefix(n); 
-  print_uint8_base10(val); 
-  report_util_line_feed(); // report_util_setting_string(n); 
+static void report_util_uint8_setting(uint8_t n, int val) {
+  report_util_setting_prefix(n);
+  print_uint8_base10(val);
+  //report_util_line_feed(); 
+  report_util_setting_string(n);
 }
-static void report_util_float_setting(uint8_t n, float val, uint8_t n_decimal) { 
-  report_util_setting_prefix(n); 
+static void report_util_float_setting(uint8_t n, float val, uint8_t n_decimal) {
+  report_util_setting_prefix(n);
   printFloat(val,n_decimal);
-  report_util_line_feed(); // report_util_setting_string(n);
+  //report_util_line_feed();
+  report_util_setting_string(n);
 }
 
 
@@ -174,7 +174,7 @@ void report_init_message()
 
 // Grbl help message
 void report_grbl_help() {
-  printPgmString(PSTR("[HLP:$$ $# $G $I $N $x=val $Nx=line $J=line $SLP $C $X $H ~ ! ? ctrl-x]\r\n"));    
+  printPgmString(PSTR("[HLP:$$ $# $G $I $N $x=val $Nx=line $J=line $SLP $C $X $H ~ ! ? ctrl-x]\r\n"));
 }
 
 
@@ -184,8 +184,12 @@ void report_grbl_settings() {
   // Print Grbl settings.
   report_util_uint8_setting(0,settings.pulse_microseconds);
   report_util_uint8_setting(1,settings.stepper_idle_lock_time);
-  report_util_uint8_setting(2,settings.step_invert_mask);
-  report_util_uint8_setting(3,settings.dir_invert_mask);
+  //report_util_uint8_setting(2,settings.step_invert_mask);
+  report_util_uint8_setting(2,settings.step_invert_mask_b);
+  // TODO FIXME - no mask for PORTD/DDRD
+  //report_util_uint8_setting(3,settings.dir_invert_mask);
+  report_util_uint8_setting(3,settings.dir_invert_mask_b);
+  // TODO FIXME - no mask for PORTD/DDRD
   report_util_uint8_setting(4,bit_istrue(settings.flags,BITFLAG_INVERT_ST_ENABLE));
   report_util_uint8_setting(5,bit_istrue(settings.flags,BITFLAG_INVERT_LIMIT_PINS));
   report_util_uint8_setting(6,bit_istrue(settings.flags,BITFLAG_INVERT_PROBE_PIN));
@@ -302,8 +306,8 @@ void report_gcode_modes()
     switch (gc_state.modal.program_flow) {
       case PROGRAM_FLOW_PAUSED : serial_write('0'); break;
       // case PROGRAM_FLOW_OPTIONAL_STOP : serial_write('1'); break; // M1 is ignored and not supported.
-      case PROGRAM_FLOW_COMPLETED_M2 : 
-      case PROGRAM_FLOW_COMPLETED_M30 : 
+      case PROGRAM_FLOW_COMPLETED_M2 :
+      case PROGRAM_FLOW_COMPLETED_M30 :
         print_uint8_base10(gc_state.modal.program_flow);
         break;
     }
@@ -328,12 +332,12 @@ void report_gcode_modes()
   #endif
 
   #ifdef ENABLE_PARKING_OVERRIDE_CONTROL
-    if (sys.override_ctrl == OVERRIDE_PARKING_MOTION) { 
+    if (sys.override_ctrl == OVERRIDE_PARKING_MOTION) {
       report_util_gcode_modes_M();
       print_uint8_base10(56);
     }
   #endif
-  
+
   printPgmString(PSTR(" T"));
   print_uint8_base10(gc_state.tool);
 
@@ -417,7 +421,7 @@ void report_build_info(char *line)
   #endif
   #ifdef ENABLE_SAFETY_DOOR_INPUT_PIN
     serial_write('+');
-  #endif  
+  #endif
   #ifndef ENABLE_RESTORE_EEPROM_WIPE_ALL // NOTE: Shown when disabled.
     serial_write('*');
   #endif
@@ -561,32 +565,55 @@ void report_realtime_status()
     #else
       printPgmString(PSTR("|F:"));
       printFloat_RateValue(st_get_realtime_rate());
-    #endif      
+    #endif
   #endif
 
   #ifdef REPORT_FIELD_PIN_STATE
-    uint8_t lim_pin_state = limits_get_state();
+    uint8_t lim_pin_state_b = limits_get_state_b();
+    uint8_t lim_pin_state_d = limits_get_state_d();
     uint8_t ctrl_pin_state = system_control_get_state();
     uint8_t prb_pin_state = probe_get_state();
-    if (lim_pin_state | ctrl_pin_state | prb_pin_state) {
+    if (lim_pin_state_b | lim_pin_state_d | ctrl_pin_state | prb_pin_state) {
       printPgmString(PSTR("|Pn:"));
       if (prb_pin_state) { serial_write('P'); }
-      if (lim_pin_state) {
+      if (lim_pin_state_b | lim_pin_state_d) {
         #ifdef ENABLE_DUAL_AXIS
           #if (DUAL_AXIS_SELECT == X_AXIS)
             if (bit_istrue(lim_pin_state,(bit(X_AXIS)|bit(N_AXIS)))) { serial_write('X'); }
             if (bit_istrue(lim_pin_state,bit(Y_AXIS))) { serial_write('Y'); }
           #endif
           #if (DUAL_AXIS_SELECT == Y_AXIS)
-            if (bit_istrue(lim_pin_state,bit(X_AXIS))) { serial_write('X'); }
+            if (bit_istrue(lim_pin_state,bit(X_AXIS))) { serial_write('X');
             if (bit_istrue(lim_pin_state,(bit(Y_AXIS)|bit(N_AXIS)))) { serial_write('Y'); }
           #endif
           if (bit_istrue(lim_pin_state,bit(Z_AXIS))) { serial_write('Z'); }
-        #else
-          if (bit_istrue(lim_pin_state,bit(X_AXIS))) { serial_write('X'); }
-          if (bit_istrue(lim_pin_state,bit(Y_AXIS))) { serial_write('Y'); }
-          if (bit_istrue(lim_pin_state,bit(Z_AXIS))) { serial_write('Z'); }
-        #endif
+        #else // ENABLE_DUAL_AXIS
+
+          #ifdef X_LIMIT_PORT_B
+            if (bit_istrue(lim_pin_state_b,bit(X_AXIS))) {
+          #else
+            if (bit_istrue(lim_pin_state_d,bit(X_AXIS))) {
+          #endif
+              serial_write('X');
+            }
+
+          #ifdef Y_LIMIT_PORT_B
+            if (bit_istrue(lim_pin_state_b,bit(Y_AXIS))) {
+          #else
+            if (bit_istrue(lim_pin_state_d,bit(Y_AXIS))) {
+          #endif
+              serial_write('Y');
+            }
+
+          #if defined(Z_LIMIT_PORT_B) || defined(Z_LIMIT_PORT_D)
+            #error "Z_LIMIT pin not implemented"
+            /*
+            if (bit_istrue(lim_pin_state,bit(Z_AXIS))) {
+              serial_write('Z');
+            }
+            */
+          #endif
+        #endif // ENABLE_DUAL_AXIS
       }
       if (ctrl_pin_state) {
         #ifdef ENABLE_SAFETY_DOOR_INPUT_PIN
@@ -629,7 +656,7 @@ void report_realtime_status()
       if (sp_state || cl_state) {
         printPgmString(PSTR("|A:"));
         if (sp_state) { // != SPINDLE_STATE_DISABLE
-          #ifdef VARIABLE_SPINDLE 
+          #ifdef VARIABLE_SPINDLE
             #ifdef USE_SPINDLE_DIR_AS_ENABLE_PIN
               serial_write('S'); // CW
             #else
@@ -645,7 +672,7 @@ void report_realtime_status()
         #ifdef ENABLE_M7
           if (cl_state & COOLANT_STATE_MIST) { serial_write('M'); }
         #endif
-      }  
+      }
     }
   #endif
 

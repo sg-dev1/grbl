@@ -26,8 +26,12 @@ settings_t settings;
 const __flash settings_t defaults = {\
     .pulse_microseconds = DEFAULT_STEP_PULSE_MICROSECONDS,
     .stepper_idle_lock_time = DEFAULT_STEPPER_IDLE_LOCK_TIME,
-    .step_invert_mask = DEFAULT_STEPPING_INVERT_MASK,
-    .dir_invert_mask = DEFAULT_DIRECTION_INVERT_MASK,
+//    .step_invert_mask = DEFAULT_STEPPING_INVERT_MASK,
+    .step_invert_mask_b = DEFAULT_STEPPING_INVERT_MASK,
+    .step_invert_mask_d = DEFAULT_STEPPING_INVERT_MASK,
+//    .dir_invert_mask = DEFAULT_DIRECTION_INVERT_MASK,
+    .dir_invert_mask_b = DEFAULT_DIRECTION_INVERT_MASK,
+    .dir_invert_mask_d = DEFAULT_DIRECTION_INVERT_MASK,
     .status_report_mask = DEFAULT_STATUS_REPORT_MASK,
     .junction_deviation = DEFAULT_JUNCTION_DEVIATION,
     .arc_tolerance = DEFAULT_ARC_TOLERANCE,
@@ -64,7 +68,7 @@ const __flash settings_t defaults = {\
 void settings_store_startup_line(uint8_t n, char *line)
 {
   #ifdef FORCE_BUFFER_SYNC_DURING_EEPROM_WRITE
-    protocol_buffer_synchronize(); // A startup line may contain a motion and be executing. 
+    protocol_buffer_synchronize(); // A startup line may contain a motion and be executing.
   #endif
   uint32_t addr = n*(LINE_BUFFER_SIZE+1)+EEPROM_ADDR_STARTUP_BLOCK;
   memcpy_to_eeprom_with_checksum(addr,(char*)line, LINE_BUFFER_SIZE);
@@ -102,7 +106,7 @@ void write_global_settings()
 
 // Method to restore EEPROM-saved Grbl global settings back to defaults.
 void settings_restore(uint8_t restore_flag) {
-  if (restore_flag & SETTINGS_RESTORE_DEFAULTS) {    
+  if (restore_flag & SETTINGS_RESTORE_DEFAULTS) {
     settings = defaults;
     write_global_settings();
   }
@@ -233,11 +237,15 @@ uint8_t settings_store_global_setting(uint8_t parameter, float value) {
         settings.pulse_microseconds = int_value; break;
       case 1: settings.stepper_idle_lock_time = int_value; break;
       case 2:
-        settings.step_invert_mask = int_value;
+        //settings.step_invert_mask = int_value;
+        settings.step_invert_mask_b = int_value;
+        // FIXME for portd we would need a different parameter (number in global config)
         st_generate_step_dir_invert_masks(); // Regenerate step and direction port invert masks.
         break;
       case 3:
-        settings.dir_invert_mask = int_value;
+        //settings.dir_invert_mask = int_value;
+        settings.dir_invert_mask_b = int_value;
+        // FIXME for portd we would need a different parameter (number in global config)
         st_generate_step_dir_invert_masks(); // Regenerate step and direction port invert masks.
         break;
       case 4: // Reset to ensure change. Immediate re-init may cause problems.
@@ -314,27 +322,143 @@ void settings_init() {
 
 
 // Returns step pin mask according to Grbl internal axis indexing.
-uint8_t get_step_pin_mask(uint8_t axis_idx)
+uint8_t get_step_pin_mask_b(uint8_t axis_idx)
 {
-  if ( axis_idx == X_AXIS ) { return((1<<X_STEP_BIT)); }
-  if ( axis_idx == Y_AXIS ) { return((1<<Y_STEP_BIT)); }
-  return((1<<Z_STEP_BIT));
+  if ( axis_idx == X_AXIS ) {
+    #ifdef X_STEP_PORT_B
+      return((1<<X_STEP_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  if ( axis_idx == Y_AXIS ) {
+    #ifdef Y_STEP_PORT_B
+      return((1<<Y_STEP_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  #ifdef Z_STEP_PORT_B
+    return((1<<Z_STEP_BIT));
+  #else
+    return 0;
+  #endif
+}
+uint8_t get_step_pin_mask_d(uint8_t axis_idx)
+{
+  if ( axis_idx == X_AXIS ) {
+    #ifdef X_STEP_PORT_D
+      return((1<<X_STEP_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  if ( axis_idx == Y_AXIS ) {
+    #ifdef Y_STEP_PORT_D
+      return((1<<Y_STEP_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  #ifdef Z_STEP_PORT_D
+    return((1<<Z_STEP_BIT));
+  #else
+    return 0;
+  #endif
 }
 
 
 // Returns direction pin mask according to Grbl internal axis indexing.
-uint8_t get_direction_pin_mask(uint8_t axis_idx)
+uint8_t get_direction_pin_mask_b(uint8_t axis_idx)
 {
-  if ( axis_idx == X_AXIS ) { return((1<<X_DIRECTION_BIT)); }
-  if ( axis_idx == Y_AXIS ) { return((1<<Y_DIRECTION_BIT)); }
-  return((1<<Z_DIRECTION_BIT));
+  if ( axis_idx == X_AXIS ) {
+    #ifdef X_DIRECTION_PORT_B
+      return((1<<X_DIRECTION_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  if ( axis_idx == Y_AXIS ) {
+    #ifdef Y_DIRECTION_PORT_B
+      return((1<<Y_DIRECTION_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  #ifdef Z_DIRECTION_PORT_B
+    return((1<<Z_DIRECTION_BIT));
+  #else
+    return 0;
+  #endif
+}
+uint8_t get_direction_pin_mask_d(uint8_t axis_idx)
+{
+  if ( axis_idx == X_AXIS ) {
+    #ifdef X_DIRECTION_PORT_D
+      return((1<<X_DIRECTION_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  if ( axis_idx == Y_AXIS ) {
+    #ifdef Y_DIRECTION_PORT_D
+      return((1<<Y_DIRECTION_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  #ifdef Z_DIRECTION_PORT_D
+    return((1<<Z_DIRECTION_BIT));
+  #else
+    return 0;
+  #endif
 }
 
 
 // Returns limit pin mask according to Grbl internal axis indexing.
-uint8_t get_limit_pin_mask(uint8_t axis_idx)
+uint8_t get_limit_pin_mask_b(uint8_t axis_idx)
 {
-  if ( axis_idx == X_AXIS ) { return((1<<X_LIMIT_BIT)); }
-  if ( axis_idx == Y_AXIS ) { return((1<<Y_LIMIT_BIT)); }
-  return((1<<Z_LIMIT_BIT));
+  if ( axis_idx == X_AXIS ) {
+    #ifdef X_LIMIT_PORT_B
+      return((1<<X_LIMIT_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  if ( axis_idx == Y_AXIS ) {
+    #ifdef X_LIMIT_PORT_B
+      return((1<<Y_LIMIT_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  #ifdef Z_LIMIT_PORT_B
+    #error "Z_LIMIT pin not implemented"
+    //return((1<<Z_LIMIT_BIT));
+  #else
+    return 0;
+  #endif
+}
+uint8_t get_limit_pin_mask_d(uint8_t axis_idx)
+{
+  if ( axis_idx == X_AXIS ) {
+    #ifdef X_LIMIT_PORT_D
+      return((1<<X_LIMIT_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  if ( axis_idx == Y_AXIS ) {
+    #ifdef X_LIMIT_PORT_D
+      return((1<<Y_LIMIT_BIT));
+    #else
+      return 0;
+    #endif
+  }
+  #ifdef Z_LIMIT_PORT_D
+    #error "Z_LIMIT pin not implemented"
+    //return((1<<Z_LIMIT_BIT));
+  #else
+    return 0;
+  #endif
 }

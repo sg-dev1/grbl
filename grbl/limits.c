@@ -40,17 +40,29 @@
 
 void limits_init()
 {
-  LIMIT_DDR &= ~(LIMIT_MASK); // Set as input pins
+  //LIMIT_DDR &= ~(LIMIT_MASK); // Set as input pins
+  DDRB &= ~(LIMIT_MASK_B);
+  DDRD &= ~(LIMIT_MASK_D);
 
   #ifdef DISABLE_LIMIT_PIN_PULL_UP
-    LIMIT_PORT &= ~(LIMIT_MASK); // Normal low operation. Requires external pull-down.
+//    LIMIT_PORT &= ~(LIMIT_MASK);
+    // Normal low operation. Requires external pull-down.
+    PORTB &= ~(LIMIT_MASK_B);
+    PORTD &= ~(LIMIT_MASK_D);
   #else
-    LIMIT_PORT |= (LIMIT_MASK);  // Enable internal pull-up resistors. Normal high operation.
+//    LIMIT_PORT |= (LIMIT_MASK);
+    // Enable internal pull-up resistors. Normal high operation.
+    PORTB |= (LIMIT_MASK_B);
+    PORTD |= (LIMIT_MASK_D);
   #endif
 
   if (bit_istrue(settings.flags,BITFLAG_HARD_LIMIT_ENABLE)) {
-    LIMIT_PCMSK |= LIMIT_MASK; // Enable specific pins of the Pin Change Interrupt
-    PCICR |= (1 << LIMIT_INT); // Enable Pin Change Interrupt
+    //LIMIT_PCMSK |= LIMIT_MASK;
+    // Enable specific pins of the Pin Change Interrupt
+    LIMIT_PCMSK_B |= LIMIT_MASK_B;
+    LIMIT_PCMSK_D |= LIMIT_MASK_D;
+    // Enable Pin Change Interrupt
+    PCICR |= (1 << LIMIT_INT);
   } else {
     limits_disable();
   }
@@ -66,30 +78,53 @@ void limits_init()
 // Disables hard limits.
 void limits_disable()
 {
-  LIMIT_PCMSK &= ~LIMIT_MASK;  // Disable specific pins of the Pin Change Interrupt
-  PCICR &= ~(1 << LIMIT_INT);  // Disable Pin Change Interrupt
+  //LIMIT_PCMSK &= ~LIMIT_MASK;
+  // Disable specific pins of the Pin Change Interrupt
+  LIMIT_PCMSK_B &= ~LIMIT_MASK_B;
+  LIMIT_PCMSK_D &= ~LIMIT_MASK_D;
+  // Disable Pin Change Interrupt
+  PCICR &= ~(1 << LIMIT_INT);
 }
 
 
 // Returns limit state as a bit-wise uint8 variable. Each bit indicates an axis limit, where
 // triggered is 1 and not triggered is 0. Invert mask is applied. Axes are defined by their
 // number in bit position, i.e. Z_AXIS is (1<<2) or bit 2, and Y_AXIS is (1<<1) or bit 1.
-uint8_t limits_get_state()
+uint8_t limits_get_state_b()
 {
   uint8_t limit_state = 0;
-  uint8_t pin = (LIMIT_PIN & LIMIT_MASK);
+  uint8_t pin = (PINB & LIMIT_MASK_B);
   #ifdef INVERT_LIMIT_PIN_MASK
     pin ^= INVERT_LIMIT_PIN_MASK;
   #endif
-  if (bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS)) { pin ^= LIMIT_MASK; }
+  if (bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS)) { pin ^= LIMIT_MASK_B; }
   if (pin) {
     uint8_t idx;
     for (idx=0; idx<N_AXIS; idx++) {
-      if (pin & get_limit_pin_mask(idx)) { limit_state |= (1 << idx); }
+      if (pin & get_limit_pin_mask_b(idx)) { limit_state |= (1 << idx); }
     }
     #ifdef ENABLE_DUAL_AXIS
       if (pin & (1<<DUAL_LIMIT_BIT)) { limit_state |= (1 << N_AXIS); }
     #endif
+  }
+  return(limit_state);
+}
+uint8_t limits_get_state_d()
+{
+  uint8_t limit_state = 0;
+  uint8_t pin = (PIND & LIMIT_MASK_D);
+  #ifdef INVERT_LIMIT_PIN_MASK
+    pin ^= INVERT_LIMIT_PIN_MASK;
+  #endif
+  if (bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS)) { pin ^= LIMIT_MASK_D; }
+  if (pin) {
+    uint8_t idx;
+    for (idx=0; idx<N_AXIS; idx++) {
+      if (pin & get_limit_pin_mask_d(idx)) { limit_state |= (1 << idx); }
+    }
+    /*#ifdef ENABLE_DUAL_AXIS
+      if (pin & (1<<DUAL_LIMIT_BIT)) { limit_state |= (1 << N_AXIS); }
+    #endif*/
   }
   return(limit_state);
 }
@@ -100,14 +135,14 @@ uint8_t limits_get_state()
 // If a switch is triggered at all, something bad has happened and treat it as such, regardless
 // if a limit switch is being disengaged. It's impossible to reliably tell the state of a
 // bouncing pin because the Arduino microcontroller does not retain any state information when
-// detecting a pin change. If we poll the pins in the ISR, you can miss the correct reading if the 
+// detecting a pin change. If we poll the pins in the ISR, you can miss the correct reading if the
 // switch is bouncing.
 // NOTE: Do not attach an e-stop to the limit pins, because this interrupt is disabled during
 // homing cycles and will not respond correctly. Upon user request or need, there may be a
 // special pinout for an e-stop, but it is generally recommended to just directly connect
 // your e-stop switch to the Arduino reset pin, since it is the most correct way to do this.
 #ifndef ENABLE_SOFTWARE_DEBOUNCE
-  ISR(LIMIT_INT_vect) // DEFAULT: Limit pin change interrupt process.
+  ISR(LIMIT_INT_vect_B) // DEFAULT: Limit pin change interrupt process.
   {
     // Ignore limit switches if already in an alarm state or in-process of executing an alarm.
     // When in the alarm state, Grbl should have been reset or will force a reset, so any pending
@@ -118,7 +153,24 @@ uint8_t limits_get_state()
       if (!(sys_rt_exec_alarm)) {
         #ifdef HARD_LIMIT_FORCE_STATE_CHECK
           // Check limit pin state.
-          if (limits_get_state()) {
+          if (limits_get_state_b()) {
+            mc_reset(); // Initiate system kill.
+            system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
+          }
+        #else
+          mc_reset(); // Initiate system kill.
+          system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
+        #endif
+      }
+    }
+  }
+  ISR(LIMIT_INT_vect_D) // copied from above
+  {
+    if (sys.state != STATE_ALARM) {
+      if (!(sys_rt_exec_alarm)) {
+        #ifdef HARD_LIMIT_FORCE_STATE_CHECK
+          // Check limit pin state.
+          if (limits_get_state_d()) {
             mc_reset(); // Initiate system kill.
             system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
           }
@@ -130,19 +182,19 @@ uint8_t limits_get_state()
     }
   }
 #else // OPTIONAL: Software debounce limit pin routine.
-  // Upon limit pin change, enable watchdog timer to create a short delay. 
+  // Upon limit pin change, enable watchdog timer to create a short delay.
   ISR(LIMIT_INT_vect) { if (!(WDTCSR & (1<<WDIE))) { WDTCSR |= (1<<WDIE); } }
   ISR(WDT_vect) // Watchdog timer ISR
   {
-    WDTCSR &= ~(1<<WDIE); // Disable watchdog timer. 
-    if (sys.state != STATE_ALARM) {  // Ignore if already in alarm state. 
+    WDTCSR &= ~(1<<WDIE); // Disable watchdog timer.
+    if (sys.state != STATE_ALARM) {  // Ignore if already in alarm state.
       if (!(sys_rt_exec_alarm)) {
-        // Check limit pin state. 
+        // Check limit pin state.
         if (limits_get_state()) {
           mc_reset(); // Initiate system kill.
           system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
         }
-      }  
+      }
     }
   }
 #endif
@@ -169,7 +221,9 @@ void limits_go_home(uint8_t cycle_mask)
 
   // Initialize variables used for homing computations.
   uint8_t n_cycle = (2*N_HOMING_LOCATE_CYCLE+1);
-  uint8_t step_pin[N_AXIS];
+  //uint8_t step_pin[N_AXIS];
+  uint8_t step_pin_b[N_AXIS];
+  uint8_t step_pin_d[N_AXIS];
   #ifdef ENABLE_DUAL_AXIS
     uint8_t step_pin_dual;
     uint8_t dual_axis_async_check;
@@ -189,7 +243,8 @@ void limits_go_home(uint8_t cycle_mask)
   uint8_t idx;
   for (idx=0; idx<N_AXIS; idx++) {
     // Initialize step pin masks
-    step_pin[idx] = get_step_pin_mask(idx);
+    step_pin_b[idx] = get_step_pin_mask_b(idx);
+    step_pin_d[idx] = get_step_pin_mask_d(idx);
     #ifdef COREXY
       if ((idx==A_MOTOR)||(idx==B_MOTOR)) { step_pin[idx] = (get_step_pin_mask(X_AXIS)|get_step_pin_mask(Y_AXIS)); }
     #endif
@@ -208,13 +263,16 @@ void limits_go_home(uint8_t cycle_mask)
   bool approach = true;
   float homing_rate = settings.homing_seek_rate;
 
-  uint8_t limit_state, axislock, n_active_axis;
+  uint8_t limit_state_b, limit_state_d,
+    axislock_b, axislock_d,
+    n_active_axis;
   do {
 
     system_convert_array_steps_to_mpos(target,sys_position);
 
     // Initialize and declare variables needed for homing routine.
-    axislock = 0;
+    axislock_b = 0;
+    axislock_d = 0;
     #ifdef ENABLE_DUAL_AXIS
       sys.homing_axis_lock_dual = 0;
       dual_trigger_position = 0;
@@ -249,7 +307,8 @@ void limits_go_home(uint8_t cycle_mask)
           else { target[idx] = -max_travel; }
         }
         // Apply axislock to the step port pins active in this cycle.
-        axislock |= step_pin[idx];
+        axislock_b |= step_pin_b[idx];
+        axislock_d |= step_pin_d[idx];
         #ifdef ENABLE_DUAL_AXIS
           if (idx == DUAL_AXIS_SELECT) { sys.homing_axis_lock_dual = step_pin_dual; }
         #endif
@@ -257,7 +316,9 @@ void limits_go_home(uint8_t cycle_mask)
 
     }
     homing_rate *= sqrt(n_active_axis); // [sqrt(N_AXIS)] Adjust so individual axes all move at homing rate.
-    sys.homing_axis_lock = axislock;
+    //sys.homing_axis_lock = axislock_b | axislock_d;
+    sys.homing_axis_lock_b = axislock_b;
+    sys.homing_axis_lock_d = axislock_d;
 
     // Perform homing cycle. Planner buffer should be empty, as required to initiate the homing cycle.
     pl_data->feed_rate = homing_rate; // Set current homing rate.
@@ -269,8 +330,10 @@ void limits_go_home(uint8_t cycle_mask)
     do {
       if (approach) {
         // Check limit state. Lock out cycle axes when they change.
-        limit_state = limits_get_state();
+        limit_state_b = limits_get_state_b();
+        limit_state_d = limits_get_state_d();
         for (idx=0; idx<N_AXIS; idx++) {
+          /*
           if (axislock & step_pin[idx]) {
             if (limit_state & (1 << idx)) {
               #ifdef COREXY
@@ -284,16 +347,30 @@ void limits_go_home(uint8_t cycle_mask)
               #endif
             }
           }
+          */
+          // TODO check if this correct like that
+          if (axislock_b & step_pin_b[idx]) {
+            if (limit_state_b & (1 << idx)) {
+              axislock_b &= ~(step_pin_b[idx]);
+            }
+          }
+          if (axislock_d & step_pin_d[idx]) {
+            if (limit_state_d & (1 << idx)) {
+              axislock_d &= ~(step_pin_d[idx]);
+            }
+          }
         }
-        sys.homing_axis_lock = axislock;
+        //sys.homing_axis_lock = axislock_b | axislock_d;
+        sys.homing_axis_lock_b = axislock_b;
+        sys.homing_axis_lock_d = axislock_d;
         #ifdef ENABLE_DUAL_AXIS
           if (sys.homing_axis_lock_dual) { // NOTE: Only true when homing dual axis.
-            if (limit_state & (1 << N_AXIS)) { 
+            if (limit_state & (1 << N_AXIS)) {
               sys.homing_axis_lock_dual = 0;
               dual_axis_async_check |= DUAL_AXIS_CHECK_TRIGGER_2;
             }
           }
-          
+
           // When first dual axis limit triggers, record position and begin checking distance until other limit triggers. Bail upon failure.
           if (dual_axis_async_check) {
             if (dual_axis_async_check & DUAL_AXIS_CHECK_ENABLE) {
@@ -324,8 +401,16 @@ void limits_go_home(uint8_t cycle_mask)
         if (rt_exec & EXEC_RESET) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_RESET); }
         // Homing failure condition: Safety door was opened.
         if (rt_exec & EXEC_SAFETY_DOOR) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_DOOR); }
+
         // Homing failure condition: Limit switch still engaged after pull-off motion
-        if (!approach && (limits_get_state() & cycle_mask)) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_PULLOFF); }
+        if (
+          !approach &&
+          ((limits_get_state_b() & cycle_mask) ||
+            (limits_get_state_d() & cycle_mask))
+        ) {
+          system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_PULLOFF);
+        }
+
         // Homing failure condition: Limit switch not found during approach.
         if (approach && (rt_exec & EXEC_CYCLE_STOP)) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_APPROACH); }
         if (sys_rt_exec_alarm) {
@@ -342,7 +427,8 @@ void limits_go_home(uint8_t cycle_mask)
     #ifdef ENABLE_DUAL_AXIS
       } while ((STEP_MASK & axislock) || (sys.homing_axis_lock_dual));
     #else
-      } while (STEP_MASK & axislock);
+      //} while (STEP_MASK & axislock);
+      } while ((STEP_MASK_B & axislock_b) || (STEP_MASK_D & axislock_d));
     #endif
 
     st_reset(); // Immediately force kill steppers and reset step segment buffer.
