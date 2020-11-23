@@ -40,7 +40,8 @@
 
 void limits_init()
 {
-  //LIMIT_DDR &= ~(LIMIT_MASK); // Set as input pins
+//  LIMIT_DDR &= ~(LIMIT_MASK);
+  // Set as input pins
   DDRB &= ~(LIMIT_MASK_B);
   DDRD &= ~(LIMIT_MASK_D);
 
@@ -56,13 +57,10 @@ void limits_init()
     PORTD |= (LIMIT_MASK_D);
   #endif
 
+  /*
   if (bit_istrue(settings.flags,BITFLAG_HARD_LIMIT_ENABLE)) {
-    //LIMIT_PCMSK |= LIMIT_MASK;
-    // Enable specific pins of the Pin Change Interrupt
-    LIMIT_PCMSK_B |= LIMIT_MASK_B;
-    LIMIT_PCMSK_D |= LIMIT_MASK_D;
-    // Enable Pin Change Interrupt
-    PCICR |= (1 << LIMIT_INT);
+    LIMIT_PCMSK |= LIMIT_MASK; // Enable specific pins of the Pin Change Interrupt
+    PCICR |= (1 << LIMIT_INT); // Enable Pin Change Interrupt
   } else {
     limits_disable();
   }
@@ -72,60 +70,60 @@ void limits_init()
     WDTCSR |= (1<<WDCE) | (1<<WDE);
     WDTCSR = (1<<WDP0); // Set time-out at ~32msec.
   #endif
+  */
 }
 
 
 // Disables hard limits.
 void limits_disable()
 {
-  //LIMIT_PCMSK &= ~LIMIT_MASK;
-  // Disable specific pins of the Pin Change Interrupt
-  LIMIT_PCMSK_B &= ~LIMIT_MASK_B;
-  LIMIT_PCMSK_D &= ~LIMIT_MASK_D;
-  // Disable Pin Change Interrupt
-  PCICR &= ~(1 << LIMIT_INT);
+  /*
+  LIMIT_PCMSK &= ~LIMIT_MASK;  // Disable specific pins of the Pin Change Interrupt
+  PCICR &= ~(1 << LIMIT_INT);  // Disable Pin Change Interrupt
+  */
 }
 
 
 // Returns limit state as a bit-wise uint8 variable. Each bit indicates an axis limit, where
 // triggered is 1 and not triggered is 0. Invert mask is applied. Axes are defined by their
 // number in bit position, i.e. Z_AXIS is (1<<2) or bit 2, and Y_AXIS is (1<<1) or bit 1.
-uint8_t limits_get_state_b()
+uint8_t limits_get_state()
 {
   uint8_t limit_state = 0;
-  uint8_t pin = (PINB & LIMIT_MASK_B);
+  uint8_t invert_pin = bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS);
+  //uint8_t pin = (LIMIT_PIN & LIMIT_MASK);
+  uint8_t xpin = X_LIMIT_PIN & (1 << X_LIMIT_BIT);
+  if ((xpin && !invert_pin) || (!xpin && invert_pin)) {
+    limit_state |= (1 << X_AXIS);
+  }
+  uint8_t ypin = Y_LIMIT_PIN & (1 << Y_LIMIT_BIT);
+  if ((ypin && !invert_pin) || (!ypin && invert_pin)) {
+    limit_state |= (1 << Y_AXIS);
+  }
+  // same way Z_LIMIT_PIN could be supported
+
   #ifdef INVERT_LIMIT_PIN_MASK
+    #error "INVERT_LIMIT_PIN_MASK not supported"
     pin ^= INVERT_LIMIT_PIN_MASK;
   #endif
-  if (bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS)) { pin ^= LIMIT_MASK_B; }
+
+  /*
+  if (bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS)) {
+    pin ^= LIMIT_MASK;
+  }
+  */
+
+  /*
   if (pin) {
     uint8_t idx;
     for (idx=0; idx<N_AXIS; idx++) {
-      if (pin & get_limit_pin_mask_b(idx)) { limit_state |= (1 << idx); }
+      if (pin & get_limit_pin_mask(idx)) { limit_state |= (1 << idx); }
     }
     #ifdef ENABLE_DUAL_AXIS
       if (pin & (1<<DUAL_LIMIT_BIT)) { limit_state |= (1 << N_AXIS); }
     #endif
   }
-  return(limit_state);
-}
-uint8_t limits_get_state_d()
-{
-  uint8_t limit_state = 0;
-  uint8_t pin = (PIND & LIMIT_MASK_D);
-  #ifdef INVERT_LIMIT_PIN_MASK
-    pin ^= INVERT_LIMIT_PIN_MASK;
-  #endif
-  if (bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS)) { pin ^= LIMIT_MASK_D; }
-  if (pin) {
-    uint8_t idx;
-    for (idx=0; idx<N_AXIS; idx++) {
-      if (pin & get_limit_pin_mask_d(idx)) { limit_state |= (1 << idx); }
-    }
-    /*#ifdef ENABLE_DUAL_AXIS
-      if (pin & (1<<DUAL_LIMIT_BIT)) { limit_state |= (1 << N_AXIS); }
-    #endif*/
-  }
+  */
   return(limit_state);
 }
 
@@ -142,7 +140,8 @@ uint8_t limits_get_state_d()
 // special pinout for an e-stop, but it is generally recommended to just directly connect
 // your e-stop switch to the Arduino reset pin, since it is the most correct way to do this.
 #ifndef ENABLE_SOFTWARE_DEBOUNCE
-  ISR(LIMIT_INT_vect_B) // DEFAULT: Limit pin change interrupt process.
+/*
+  ISR(LIMIT_INT_vect) // DEFAULT: Limit pin change interrupt process.
   {
     // Ignore limit switches if already in an alarm state or in-process of executing an alarm.
     // When in the alarm state, Grbl should have been reset or will force a reset, so any pending
@@ -153,7 +152,7 @@ uint8_t limits_get_state_d()
       if (!(sys_rt_exec_alarm)) {
         #ifdef HARD_LIMIT_FORCE_STATE_CHECK
           // Check limit pin state.
-          if (limits_get_state_b()) {
+          if (limits_get_state()) {
             mc_reset(); // Initiate system kill.
             system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
           }
@@ -164,23 +163,7 @@ uint8_t limits_get_state_d()
       }
     }
   }
-  ISR(LIMIT_INT_vect_D) // copied from above
-  {
-    if (sys.state != STATE_ALARM) {
-      if (!(sys_rt_exec_alarm)) {
-        #ifdef HARD_LIMIT_FORCE_STATE_CHECK
-          // Check limit pin state.
-          if (limits_get_state_d()) {
-            mc_reset(); // Initiate system kill.
-            system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
-          }
-        #else
-          mc_reset(); // Initiate system kill.
-          system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
-        #endif
-      }
-    }
-  }
+  */
 #else // OPTIONAL: Software debounce limit pin routine.
   // Upon limit pin change, enable watchdog timer to create a short delay.
   ISR(LIMIT_INT_vect) { if (!(WDTCSR & (1<<WDIE))) { WDTCSR |= (1<<WDIE); } }
@@ -221,9 +204,8 @@ void limits_go_home(uint8_t cycle_mask)
 
   // Initialize variables used for homing computations.
   uint8_t n_cycle = (2*N_HOMING_LOCATE_CYCLE+1);
-  //uint8_t step_pin[N_AXIS];
-  uint8_t step_pin_b[N_AXIS];
-  uint8_t step_pin_d[N_AXIS];
+  uint8_t step_pin[N_AXIS];
+  /*
   #ifdef ENABLE_DUAL_AXIS
     uint8_t step_pin_dual;
     uint8_t dual_axis_async_check;
@@ -238,13 +220,14 @@ void limits_go_home(uint8_t cycle_mask)
     int32_t dual_fail_distance = trunc(fail_distance*settings.steps_per_mm[DUAL_AXIS_SELECT]);
     // int32_t dual_fail_distance = trunc((DUAL_AXIS_HOMING_TRIGGER_FAIL_DISTANCE)*settings.steps_per_mm[DUAL_AXIS_SELECT]);
   #endif
+  */
   float target[N_AXIS];
   float max_travel = 0.0;
-  uint8_t idx;
+  //uint8_t idx;
+  /*
   for (idx=0; idx<N_AXIS; idx++) {
     // Initialize step pin masks
-    step_pin_b[idx] = get_step_pin_mask_b(idx);
-    step_pin_d[idx] = get_step_pin_mask_d(idx);
+    step_pin[idx] = get_step_pin_mask(idx);
     #ifdef COREXY
       if ((idx==A_MOTOR)||(idx==B_MOTOR)) { step_pin[idx] = (get_step_pin_mask(X_AXIS)|get_step_pin_mask(Y_AXIS)); }
     #endif
@@ -258,21 +241,37 @@ void limits_go_home(uint8_t cycle_mask)
   #ifdef ENABLE_DUAL_AXIS
     step_pin_dual = (1<<DUAL_STEP_BIT);
   #endif
+  */
+  // get_step_pin_mask
+  step_pin[X_AXIS] = (X_STEP_BIT << 1);
+  if (bit_istrue(cycle_mask,bit(X_AXIS))) {
+    // Set target based on max_travel setting. Ensure homing switches engaged with search scalar.
+    // NOTE: settings.max_travel[] is stored as a negative value.
+    max_travel = max(max_travel,(-HOMING_AXIS_SEARCH_SCALAR)*settings.max_travel[X_AXIS]);
+  }
+
+  step_pin[Y_AXIS] = (Y_STEP_BIT << 1);
+  if (bit_istrue(cycle_mask,bit(Y_AXIS))) {
+    // Set target based on max_travel setting. Ensure homing switches engaged with search scalar.
+    // NOTE: settings.max_travel[] is stored as a negative value.
+    max_travel = max(max_travel,(-HOMING_AXIS_SEARCH_SCALAR)*settings.max_travel[Y_AXIS]);
+  }
+
+  // No z axis supported!
+
+  uint8_t idx;
 
   // Set search mode with approach at seek rate to quickly engage the specified cycle_mask limit switches.
   bool approach = true;
   float homing_rate = settings.homing_seek_rate;
 
-  uint8_t limit_state_b, limit_state_d,
-    axislock_b, axislock_d,
-    n_active_axis;
+  uint8_t limit_state, axislock, n_active_axis;
   do {
 
     system_convert_array_steps_to_mpos(target,sys_position);
 
     // Initialize and declare variables needed for homing routine.
-    axislock_b = 0;
-    axislock_d = 0;
+    axislock = 0;
     #ifdef ENABLE_DUAL_AXIS
       sys.homing_axis_lock_dual = 0;
       dual_trigger_position = 0;
@@ -300,25 +299,30 @@ void limits_go_home(uint8_t cycle_mask)
         // Set target direction based on cycle mask and homing cycle approach state.
         // NOTE: This happens to compile smaller than any other implementation tried.
         if (bit_istrue(settings.homing_dir_mask,bit(idx))) {
-          if (approach) { target[idx] = -max_travel; }
-          else { target[idx] = max_travel; }
+          if (approach) {
+            target[idx] = -max_travel;
+          }
+          else {
+            target[idx] = max_travel;
+          }
         } else {
-          if (approach) { target[idx] = max_travel; }
-          else { target[idx] = -max_travel; }
+          if (approach) {
+            target[idx] = max_travel;
+          }
+          else {
+            target[idx] = -max_travel;
+          }
         }
         // Apply axislock to the step port pins active in this cycle.
-        axislock_b |= step_pin_b[idx];
-        axislock_d |= step_pin_d[idx];
+        axislock |= step_pin[idx];
         #ifdef ENABLE_DUAL_AXIS
           if (idx == DUAL_AXIS_SELECT) { sys.homing_axis_lock_dual = step_pin_dual; }
         #endif
       }
-
     }
+
     homing_rate *= sqrt(n_active_axis); // [sqrt(N_AXIS)] Adjust so individual axes all move at homing rate.
-    //sys.homing_axis_lock = axislock_b | axislock_d;
-    sys.homing_axis_lock_b = axislock_b;
-    sys.homing_axis_lock_d = axislock_d;
+    sys.homing_axis_lock = axislock;
 
     // Perform homing cycle. Planner buffer should be empty, as required to initiate the homing cycle.
     pl_data->feed_rate = homing_rate; // Set current homing rate.
@@ -330,10 +334,8 @@ void limits_go_home(uint8_t cycle_mask)
     do {
       if (approach) {
         // Check limit state. Lock out cycle axes when they change.
-        limit_state_b = limits_get_state_b();
-        limit_state_d = limits_get_state_d();
+        limit_state = limits_get_state();
         for (idx=0; idx<N_AXIS; idx++) {
-          /*
           if (axislock & step_pin[idx]) {
             if (limit_state & (1 << idx)) {
               #ifdef COREXY
@@ -347,22 +349,8 @@ void limits_go_home(uint8_t cycle_mask)
               #endif
             }
           }
-          */
-          // TODO check if this correct like that
-          if (axislock_b & step_pin_b[idx]) {
-            if (limit_state_b & (1 << idx)) {
-              axislock_b &= ~(step_pin_b[idx]);
-            }
-          }
-          if (axislock_d & step_pin_d[idx]) {
-            if (limit_state_d & (1 << idx)) {
-              axislock_d &= ~(step_pin_d[idx]);
-            }
-          }
         }
-        //sys.homing_axis_lock = axislock_b | axislock_d;
-        sys.homing_axis_lock_b = axislock_b;
-        sys.homing_axis_lock_d = axislock_d;
+        sys.homing_axis_lock = axislock;
         #ifdef ENABLE_DUAL_AXIS
           if (sys.homing_axis_lock_dual) { // NOTE: Only true when homing dual axis.
             if (limit_state & (1 << N_AXIS)) {
@@ -401,16 +389,8 @@ void limits_go_home(uint8_t cycle_mask)
         if (rt_exec & EXEC_RESET) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_RESET); }
         // Homing failure condition: Safety door was opened.
         if (rt_exec & EXEC_SAFETY_DOOR) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_DOOR); }
-
         // Homing failure condition: Limit switch still engaged after pull-off motion
-        if (
-          !approach &&
-          ((limits_get_state_b() & cycle_mask) ||
-            (limits_get_state_d() & cycle_mask))
-        ) {
-          system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_PULLOFF);
-        }
-
+        if (!approach && (limits_get_state() & cycle_mask)) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_PULLOFF); }
         // Homing failure condition: Limit switch not found during approach.
         if (approach && (rt_exec & EXEC_CYCLE_STOP)) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_APPROACH); }
         if (sys_rt_exec_alarm) {
@@ -427,8 +407,10 @@ void limits_go_home(uint8_t cycle_mask)
     #ifdef ENABLE_DUAL_AXIS
       } while ((STEP_MASK & axislock) || (sys.homing_axis_lock_dual));
     #else
-      //} while (STEP_MASK & axislock);
-      } while ((STEP_MASK_B & axislock_b) || (STEP_MASK_D & axislock_d));
+//      } while (STEP_MASK & axislock);
+      // IMPORTANT NOTE: This only works when different bits are used on
+      // the different ports, e.g. don't use BIT 2 on PORTB and PORTD
+      } while ( (STEP_MASK_B | STEP_MASK_D) & axislock );
     #endif
 
     st_reset(); // Immediately force kill steppers and reset step segment buffer.

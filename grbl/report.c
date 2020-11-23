@@ -92,7 +92,7 @@ static void report_util_setting_string(uint8_t n) {
 static void report_util_uint8_setting(uint8_t n, int val) {
   report_util_setting_prefix(n);
   print_uint8_base10(val);
-  //report_util_line_feed(); 
+  //report_util_line_feed();
   report_util_setting_string(n);
 }
 static void report_util_float_setting(uint8_t n, float val, uint8_t n_decimal) {
@@ -569,14 +569,15 @@ void report_realtime_status()
   #endif
 
   #ifdef REPORT_FIELD_PIN_STATE
-    uint8_t lim_pin_state_b = limits_get_state_b();
-    uint8_t lim_pin_state_d = limits_get_state_d();
+//    uint8_t lim_pin_state_b = limits_get_state_b();
+//    uint8_t lim_pin_state_d = limits_get_state_d();
+    uint8_t lim_pin_state = limits_get_state();
     uint8_t ctrl_pin_state = system_control_get_state();
     uint8_t prb_pin_state = probe_get_state();
-    if (lim_pin_state_b | lim_pin_state_d | ctrl_pin_state | prb_pin_state) {
+    if (lim_pin_state | ctrl_pin_state | prb_pin_state) {
       printPgmString(PSTR("|Pn:"));
       if (prb_pin_state) { serial_write('P'); }
-      if (lim_pin_state_b | lim_pin_state_d) {
+      if (lim_pin_state) {
         #ifdef ENABLE_DUAL_AXIS
           #if (DUAL_AXIS_SELECT == X_AXIS)
             if (bit_istrue(lim_pin_state,(bit(X_AXIS)|bit(N_AXIS)))) { serial_write('X'); }
@@ -589,30 +590,18 @@ void report_realtime_status()
           if (bit_istrue(lim_pin_state,bit(Z_AXIS))) { serial_write('Z'); }
         #else // ENABLE_DUAL_AXIS
 
-          #ifdef X_LIMIT_PORT_B
-            if (bit_istrue(lim_pin_state_b,bit(X_AXIS))) {
-          #else
-            if (bit_istrue(lim_pin_state_d,bit(X_AXIS))) {
-          #endif
+            if (bit_istrue(lim_pin_state,bit(X_AXIS))) {
               serial_write('X');
             }
 
-          #ifdef Y_LIMIT_PORT_B
-            if (bit_istrue(lim_pin_state_b,bit(Y_AXIS))) {
-          #else
-            if (bit_istrue(lim_pin_state_d,bit(Y_AXIS))) {
-          #endif
+            if (bit_istrue(lim_pin_state,bit(Y_AXIS))) {
               serial_write('Y');
             }
 
-          #if defined(Z_LIMIT_PORT_B) || defined(Z_LIMIT_PORT_D)
-            #error "Z_LIMIT pin not implemented"
-            /*
             if (bit_istrue(lim_pin_state,bit(Z_AXIS))) {
               serial_write('Z');
             }
-            */
-          #endif
+            
         #endif // ENABLE_DUAL_AXIS
       }
       if (ctrl_pin_state) {

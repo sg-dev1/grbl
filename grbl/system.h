@@ -133,10 +133,10 @@ typedef struct {
   uint8_t probe_succeeded;     // Tracks if last probing cycle was successful.
 
   // TODO not sure if separate per port needed - should be one global state I think?
-  //uint8_t homing_axis_lock;
+  uint8_t homing_axis_lock;
   // Locks axes when limits engage. Used as an axis motion mask in the stepper ISR.
-  uint8_t homing_axis_lock_b;
-  uint8_t homing_axis_lock_d;
+  //uint8_t homing_axis_lock_b;
+  //uint8_t homing_axis_lock_d;
 
   #ifdef ENABLE_DUAL_AXIS
     uint8_t homing_axis_lock_dual;

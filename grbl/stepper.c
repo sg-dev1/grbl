@@ -532,8 +532,11 @@ ISR(TIMER1_COMPA_vect)
   // During a homing cycle, lock out and prevent desired axes from moving.
   if (sys.state == STATE_HOMING) {
     //st.step_outbits &= sys.homing_axis_lock;
-		st.step_b_outbits &= sys.homing_axis_lock_b;
-		st.step_d_outbits &= sys.homing_axis_lock_d;
+		//st.step_b_outbits &= sys.homing_axis_lock_b;
+		//st.step_d_outbits &= sys.homing_axis_lock_d;
+		// XXX this may cause problems ...
+		st.step_b_outbits &= sys.homing_axis_lock;
+		st.step_d_outbits &= sys.homing_axis_lock;
 		#ifdef ENABLE_DUAL_AXIS
       st.step_outbits_dual &= sys.homing_axis_lock_dual;
     #endif
