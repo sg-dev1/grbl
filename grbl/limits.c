@@ -21,6 +21,23 @@
 
 #include "grbl.h"
 
+#define LIMITS_DEBUG
+
+#ifdef LIMITS_DEBUG
+
+  #define DEBUG_PRINT_PGM_STRING(x) printPgmString(PSTR(x))
+
+  #define DEBUG_PRINT_UINT8_BASE10(n) print_uint8_base10(n)
+  #define DEBUG_PRINT_UINT8_BASE2(n, digits) print_uint8_base2_ndigit(n, digits)
+
+#else
+
+  #define DEBUG_PRINT_PGM_STRING(x)
+
+  #define DEBUG_PRINT_UINT8_BASE10(n)
+  #define DEBUG_PRINT_UINT8_BASE2(n, digits)
+
+#endif // LIMITS_DEBUG
 
 // Homing axis search distance multiplier. Computed by this value times the cycle travel.
 #ifndef HOMING_AXIS_SEARCH_SCALAR
@@ -89,18 +106,30 @@ void limits_disable()
 // number in bit position, i.e. Z_AXIS is (1<<2) or bit 2, and Y_AXIS is (1<<1) or bit 1.
 uint8_t limits_get_state()
 {
+  DEBUG_PRINT_PGM_STRING("limits_get_state()\r\n");
+
   uint8_t limit_state = 0;
   uint8_t invert_pin = bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS);
   //uint8_t pin = (LIMIT_PIN & LIMIT_MASK);
   uint8_t xpin = X_LIMIT_PIN & (1 << X_LIMIT_BIT);
+  DEBUG_PRINT_PGM_STRING("xpin=");
+  DEBUG_PRINT_UINT8_BASE2(xpin, 8);
+  DEBUG_PRINT_PGM_STRING("\r\n");
   if ((xpin && !invert_pin) || (!xpin && invert_pin)) {
     limit_state |= (1 << X_AXIS);
-  }
+  }  
   uint8_t ypin = Y_LIMIT_PIN & (1 << Y_LIMIT_BIT);
+  DEBUG_PRINT_PGM_STRING("ypin=");
+  DEBUG_PRINT_UINT8_BASE2(ypin, 8);
+  DEBUG_PRINT_PGM_STRING("\r\n");
   if ((ypin && !invert_pin) || (!ypin && invert_pin)) {
     limit_state |= (1 << Y_AXIS);
   }
   // same way Z_LIMIT_PIN could be supported
+
+  DEBUG_PRINT_PGM_STRING("limit_state=");
+  DEBUG_PRINT_UINT8_BASE2(limit_state, N_AXIS);
+  DEBUG_PRINT_PGM_STRING("\r\n");
 
   #ifdef INVERT_LIMIT_PIN_MASK
     #error "INVERT_LIMIT_PIN_MASK not supported"
@@ -259,6 +288,11 @@ void limits_go_home(uint8_t cycle_mask)
 
   // No z axis supported!
 
+  DEBUG_PRINT_PGM_STRING("x/y axis step_pin=");
+  DEBUG_PRINT_UINT8_BASE2(step_pin[X_AXIS], 8);
+  DEBUG_PRINT_UINT8_BASE2(step_pin[Y_AXIS], 8);
+  DEBUG_PRINT_PGM_STRING("\r\n");
+
   uint8_t idx;
 
   // Set search mode with approach at seek rate to quickly engage the specified cycle_mask limit switches.
@@ -267,6 +301,9 @@ void limits_go_home(uint8_t cycle_mask)
 
   uint8_t limit_state, axislock, n_active_axis;
   do {
+    DEBUG_PRINT_PGM_STRING("n_cycle=");
+    DEBUG_PRINT_UINT8_BASE10(n_cycle);
+    DEBUG_PRINT_PGM_STRING("\r\n");
 
     system_convert_array_steps_to_mpos(target,sys_position);
 
@@ -351,6 +388,11 @@ void limits_go_home(uint8_t cycle_mask)
           }
         }
         sys.homing_axis_lock = axislock;
+
+        DEBUG_PRINT_PGM_STRING("axislock=");
+        DEBUG_PRINT_UINT8_BASE2(axislock, 8);
+        DEBUG_PRINT_PGM_STRING("\r\n");
+
         #ifdef ENABLE_DUAL_AXIS
           if (sys.homing_axis_lock_dual) { // NOTE: Only true when homing dual axis.
             if (limit_state & (1 << N_AXIS)) {
@@ -377,7 +419,7 @@ void limits_go_home(uint8_t cycle_mask)
               dual_trigger_position = sys_position[DUAL_AXIS_SELECT];
             }
           }
-        #endif
+        #endif // ENABLE_DUAL_AXIS
       }
 
       st_prep_buffer(); // Check and prep segment buffer. NOTE: Should take no longer than 200us.
@@ -415,6 +457,8 @@ void limits_go_home(uint8_t cycle_mask)
 
     st_reset(); // Immediately force kill steppers and reset step segment buffer.
     delay_ms(settings.homing_debounce_delay); // Delay to allow transient dynamics to dissipate.
+
+    DEBUG_PRINT_PGM_STRING("Reversing direction\r\n");
 
     // Reverse direction and reset homing rate for locate cycle(s).
     approach = !approach;
