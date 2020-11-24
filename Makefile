@@ -27,6 +27,8 @@
 #                uploading to the AVR and the interface where this hardware
 #                is connected.
 # FUSES ........ Parameters for avrdude to flash the fuses appropriately.
+# CC ........... Compiler tool chain to use.
+# AVRDUDE-BIN .. Avrdude binary file.
 
 DEVICE     ?= atmega328p
 CLOCK      = 16000000
@@ -40,16 +42,21 @@ SOURCEDIR = grbl
 # FUSES      = -U hfuse:w:0xd9:m -U lfuse:w:0x24:m
 FUSES      = -U hfuse:w:0xd2:m -U lfuse:w:0xff:m
 
+#CC = avr-gcc
+CC = ~/.arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/bin/avr-gcc
+#AVRDUDE-BIN = avrdude
+AVRDUDE-BIN = ~/.arduino15/packages/arduino/tools/avrdude/6.3.0-arduino17/bin/avrdude
+
 # Tune the lines below only if you know what you are doing:
 
 #AVRDUDE = avrdude $(PROGRAMMER) -p $(DEVICE) -B 10 -F
-AVRDUDE = avrdude -C /etc/avrdude.conf -v -p $(DEVICE) $(PROGRAMMER)
+AVRDUDE = $(AVRDUDE-BIN) -C /etc/avrdude.conf -v -p $(DEVICE) $(PROGRAMMER)
 
 # Compile flags for avr-gcc v4.8.1. Does not produce -flto warnings.
 # COMPILE = avr-gcc -Wall -Os -DF_CPU=$(CLOCK) -mmcu=$(DEVICE) -I. -ffunction-sections
 
 # Compile flags for avr-gcc v4.9.2 compatible with the IDE. Or if you don't care about the warnings.
-COMPILE = avr-gcc -Wall -Os -DF_CPU=$(CLOCK) -mmcu=$(DEVICE) -I. -ffunction-sections -flto
+COMPILE = $(CC) -Wall -Os -DF_CPU=$(CLOCK) -mmcu=$(DEVICE) -I. -ffunction-sections -flto
 
 
 OBJECTS = $(addprefix $(BUILDDIR)/,$(notdir $(SOURCE:.c=.o)))
