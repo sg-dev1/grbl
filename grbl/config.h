@@ -858,9 +858,9 @@
 // ------------------------------------------------
 // ------ Default settings definitions ------
 // ------------------------------------------------
-#define DEFAULT_X_STEPS_PER_MM 160    //2560 // TODO - cycloneCNC: 2560
-#define DEFAULT_Y_STEPS_PER_MM 160    //2560 // TODO - cycloneCNC: 2560
-#define DEFAULT_Z_STEPS_PER_MM 300    //4800 // TODO - cycloneCNC: 4800
+#define DEFAULT_X_STEPS_PER_MM 2560 // TODO - cycloneCNC: 2560
+#define DEFAULT_Y_STEPS_PER_MM 2560 // TODO - cycloneCNC: 2560
+#define DEFAULT_Z_STEPS_PER_MM 4800 // TODO - cycloneCNC: 4800
 #define DEFAULT_X_MAX_RATE 300.0    // mm/min [changed]
 #define DEFAULT_Y_MAX_RATE 200.0    // mm/min [changed]
 #define DEFAULT_Z_MAX_RATE 150.0    // mm/min [changed]
