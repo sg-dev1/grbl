@@ -21,7 +21,7 @@
 
 #include "grbl.h"
 
-#define LIMITS_DEBUG
+//#define LIMITS_DEBUG
 
 #ifdef LIMITS_DEBUG
 
@@ -106,30 +106,30 @@ void limits_disable()
 // number in bit position, i.e. Z_AXIS is (1<<2) or bit 2, and Y_AXIS is (1<<1) or bit 1.
 uint8_t limits_get_state()
 {
-  DEBUG_PRINT_PGM_STRING("limits_get_state()\r\n");
+//  DEBUG_PRINT_PGM_STRING("limits_get_state()\r\n");
 
   uint8_t limit_state = 0;
   uint8_t invert_pin = bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS);
   //uint8_t pin = (LIMIT_PIN & LIMIT_MASK);
   uint8_t xpin = X_LIMIT_PIN & (1 << X_LIMIT_BIT);
-  DEBUG_PRINT_PGM_STRING("xpin=");
-  DEBUG_PRINT_UINT8_BASE2(xpin, 8);
-  DEBUG_PRINT_PGM_STRING("\r\n");
+//  DEBUG_PRINT_PGM_STRING("xpin=");
+//  DEBUG_PRINT_UINT8_BASE2(xpin, 8);
+//  DEBUG_PRINT_PGM_STRING("\r\n");
   if ((xpin && !invert_pin) || (!xpin && invert_pin)) {
     limit_state |= (1 << X_AXIS);
   }  
   uint8_t ypin = Y_LIMIT_PIN & (1 << Y_LIMIT_BIT);
-  DEBUG_PRINT_PGM_STRING("ypin=");
-  DEBUG_PRINT_UINT8_BASE2(ypin, 8);
-  DEBUG_PRINT_PGM_STRING("\r\n");
+//  DEBUG_PRINT_PGM_STRING("ypin=");
+//  DEBUG_PRINT_UINT8_BASE2(ypin, 8);
+//  DEBUG_PRINT_PGM_STRING("\r\n");
   if ((ypin && !invert_pin) || (!ypin && invert_pin)) {
     limit_state |= (1 << Y_AXIS);
   }
   // same way Z_LIMIT_PIN could be supported
 
-  DEBUG_PRINT_PGM_STRING("limit_state=");
-  DEBUG_PRINT_UINT8_BASE2(limit_state, N_AXIS);
-  DEBUG_PRINT_PGM_STRING("\r\n");
+//  DEBUG_PRINT_PGM_STRING("limit_state=");
+//  DEBUG_PRINT_UINT8_BASE2(limit_state, N_AXIS);
+//  DEBUG_PRINT_PGM_STRING("\r\n");
 
   #ifdef INVERT_LIMIT_PIN_MASK
     #error "INVERT_LIMIT_PIN_MASK not supported"
@@ -272,14 +272,14 @@ void limits_go_home(uint8_t cycle_mask)
   #endif
   */
   // get_step_pin_mask
-  step_pin[X_AXIS] = (X_STEP_BIT << 1);
+  step_pin[X_AXIS] = (1 << X_STEP_BIT);
   if (bit_istrue(cycle_mask,bit(X_AXIS))) {
     // Set target based on max_travel setting. Ensure homing switches engaged with search scalar.
     // NOTE: settings.max_travel[] is stored as a negative value.
     max_travel = max(max_travel,(-HOMING_AXIS_SEARCH_SCALAR)*settings.max_travel[X_AXIS]);
   }
 
-  step_pin[Y_AXIS] = (Y_STEP_BIT << 1);
+  step_pin[Y_AXIS] = (1 << Y_STEP_BIT);
   if (bit_istrue(cycle_mask,bit(Y_AXIS))) {
     // Set target based on max_travel setting. Ensure homing switches engaged with search scalar.
     // NOTE: settings.max_travel[] is stored as a negative value.
@@ -290,6 +290,7 @@ void limits_go_home(uint8_t cycle_mask)
 
   DEBUG_PRINT_PGM_STRING("x/y axis step_pin=");
   DEBUG_PRINT_UINT8_BASE2(step_pin[X_AXIS], 8);
+  DEBUG_PRINT_PGM_STRING("\r\n");
   DEBUG_PRINT_UINT8_BASE2(step_pin[Y_AXIS], 8);
   DEBUG_PRINT_PGM_STRING("\r\n");
 
@@ -368,6 +369,7 @@ void limits_go_home(uint8_t cycle_mask)
     sys.step_control = STEP_CONTROL_EXECUTE_SYS_MOTION; // Set to execute homing motion and clear existing flags.
     st_prep_buffer(); // Prep and fill segment buffer from newly planned block.
     st_wake_up(); // Initiate motion
+    uint8_t cond; // loop terminate condition
     do {
       if (approach) {
         // Check limit state. Lock out cycle axes when they change.
@@ -445,14 +447,33 @@ void limits_go_home(uint8_t cycle_mask)
           break;
         }
       }
+      
+      cond = 0;
+      if (axislock & step_pin[X_AXIS]) {
+        #ifdef X_STEP_PORT_B
+          cond = STEP_MASK_B & axislock;
+        #else
+          cond = STEP_MASK_D & axislock;
+        #endif
+      }
+      if (axislock & step_pin[Y_AXIS]) {
+        #ifdef Y_STEP_PORT_B
+          cond = STEP_MASK_B & axislock;
+        #else
+          cond = STEP_MASK_D & axislock;
+        #endif // Y_STEP_PORT_B
+      }
+      // no z axis supported
+
+      DEBUG_PRINT_PGM_STRING("cond=");
+      DEBUG_PRINT_UINT8_BASE2(cond, 8);
+      DEBUG_PRINT_PGM_STRING("\r\n");
 
     #ifdef ENABLE_DUAL_AXIS
       } while ((STEP_MASK & axislock) || (sys.homing_axis_lock_dual));
     #else
 //      } while (STEP_MASK & axislock);
-      // IMPORTANT NOTE: This only works when different bits are used on
-      // the different ports, e.g. don't use BIT 2 on PORTB and PORTD
-      } while ( (STEP_MASK_B | STEP_MASK_D) & axislock );
+      } while ( cond );
     #endif
 
     st_reset(); // Immediately force kill steppers and reset step segment buffer.
